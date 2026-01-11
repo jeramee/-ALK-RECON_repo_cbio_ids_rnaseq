@@ -32,3 +32,9 @@ ALK-RECON:
 | Understand ingest internals | [Ingest internals](docs/README_ingest_internals.md) |
 | Trust behavior via tests | [Pytest regression](docs/README_pytest_regression.md) |
 | Swap in real data | [cBioPortal swap](docs/README_cbioportal_swap.md) |
+
+---
+
+## License
+
+MIT
