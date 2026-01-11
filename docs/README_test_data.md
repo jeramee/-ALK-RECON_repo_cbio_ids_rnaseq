@@ -1,4 +1,9 @@
-# Using Synthetic ALK Test Data
+# Synthetic ALK Test Data
+
+← Back to [Quick start](README_quickstart.md)  
+→ Next: [Ingest internals](README_ingest_internals.md)
+
+Synthetic data exists to validate control-flow deterministically before using real datasets.
 
 Files:
 ```
@@ -8,6 +13,4 @@ data/test/
 └── sample_map.tsv
 ```
 
-Purpose:
-- deterministic regression
-- ALK fusion vs resistance logic
+Covers canonical fusions, rare fusions, resistance SNVs, and bypass events.
