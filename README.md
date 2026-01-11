@@ -7,8 +7,9 @@ ctDNA / NGS findings into an auditable resistance-mechanism dossier.
 
 ## Documentation Map
 
-- Quick start → docs/README_quickstart.md
-- Synthetic test data → docs/README_test_data.md
-- Ingest internals → docs/README_ingest_internals.md
-- Pytest regression → docs/README_pytest_regression.md
-- cBioPortal swap → docs/README_cbioportal_swap.md
+- [Quick start](docs/README_quickstart.md)
+- [Synthetic test data](docs/README_test_data.md)
+- [Ingest internals](docs/README_ingest_internals.md)
+- [Pytest regression](docs/README_pytest_regression.md)
+- [cBioPortal swap](docs/README_cbioportal_swap.md)
+
