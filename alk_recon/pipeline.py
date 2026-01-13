@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
@@ -74,7 +74,7 @@ def run_pipeline(
                 (snap.study_id or "unspecified"),
                 (snap.case_id or ""),
                 (snap.sample_id or ""),
-                (snap.timepoint_id or ""),
+                (snap.timepoint_id or "unspecified"),
             )
             # Attach expression if available. If not found, we leave it as None.
             snap.expression = expr_index.get(key)
@@ -93,3 +93,4 @@ def run_pipeline(
         json.dump(outputs, f, indent=2, ensure_ascii=False)
 
     return outputs
+
