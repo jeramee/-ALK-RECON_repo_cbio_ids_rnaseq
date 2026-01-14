@@ -445,3 +445,6 @@ def example_case_snapshot():
         tags=["ALK+", "example"],
         provenance=Provenance(source="manual_note", source_id="example", fetched_at_utc=now),
     )
+
+# --- Backwards-compatible alias expected by older tests ---
+MechanismCallType = MechanismType

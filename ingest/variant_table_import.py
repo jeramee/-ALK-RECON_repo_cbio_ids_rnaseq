@@ -191,7 +191,10 @@ def _effect_from_row(row: pd.Series) -> VariantEffect:
     return VariantEffect.UNKNOWN
 
 
-def dataframe_to_case_snapshots(df: pd.DataFrame, source_id: str) -> List[CaseSnapshot]:
+def dataframe_to_case_snapshots(
+    df: pd.DataFrame,
+    source_id: str = "variants_tsv",
+) -> list[CaseSnapshot]:
     """Group rows into CaseSnapshot objects.
 
     One snapshot per (case_id, sample_id, timepoint_id).

@@ -13,3 +13,10 @@ def apply_all_features(cs: CaseSnapshot) -> CaseSnapshot:
     apply_bypass_flags(cs)
     apply_persistence_flags(cs)
     return cs
+
+# --- Backwards-compatible alias for older tests / docs ---
+def apply_features_to_snapshot(cs):
+    """Compatibility wrapper. Older tests import this name."""
+    return apply_all_features(cs)
+
+

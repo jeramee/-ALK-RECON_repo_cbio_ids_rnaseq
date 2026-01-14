@@ -10,6 +10,101 @@ from schema.case_snapshot import (
     StrategyRouting,
 )
 
+def _score_on_target(cs):
+    """
+    Minimal scorer. Returns a plain dict (no new types).
+    """
+    flags = {}
+    g = getattr(cs, "genomic", None)
+    if g is not None:
+        flags = getattr(g, "flags", {}) or {}
+
+    score = 0.0
+    reasons = []
+
+    if flags.get("has_alk_fusion"):
+        score += 3.0; reasons.append("ALK fusion")
+    if flags.get("has_alk_mutation"):
+        score += 1.0; reasons.append("ALK mutation")
+    if flags.get("has_gatekeeper_mutation"):
+        score += 2.0; reasons.append("ALK gatekeeper")
+    if flags.get("has_solvent_front_mutation"):
+        score += 3.0; reasons.append("ALK solvent-front")
+
+    return {
+        "bucket": "on_target",
+        "score": float(score),
+        "reasons": reasons,
+    }
+
+
+def _score_bypass(cs):
+    flags = {}
+    g = getattr(cs, "genomic", None)
+    if g is not None:
+        flags = getattr(g, "flags", {}) or {}
+
+    score = 0.0
+    reasons = []
+
+    # Use whatever flags you already set in your feature layer
+    if flags.get("has_met_amp_or_high") or flags.get("has_met_alt"):
+        score += 2.0; reasons.append("MET alteration")
+    if flags.get("has_egfr_alt"):
+        score += 1.5; reasons.append("EGFR alteration")
+    if flags.get("has_kras_alt"):
+        score += 1.5; reasons.append("KRAS alteration")
+    if flags.get("has_erbb2_alt"):
+        score += 1.0; reasons.append("ERBB2 alteration")
+    if flags.get("has_ret_alt"):
+        score += 1.0; reasons.append("RET alteration")
+
+    return {
+        "bucket": "bypass",
+        "score": float(score),
+        "reasons": reasons,
+    }
+
+def _score_persistence(cs):
+    """
+    Uses expression.signature_scores['persister_score'] if present.
+    Returns a dict.
+    """
+    expr = getattr(cs, "expression", None)
+    sig = getattr(expr, "signature_scores", {}) if expr is not None else {}
+    sig = sig or {}
+
+    pers = sig.get("persister_score", None)
+
+    score = 0.0
+    reasons = []
+
+    if pers is None:
+        reasons.append("no expression signature")
+        score = 0.0
+    else:
+        # very conservative thresholds; adjust later
+        try:
+            p = float(pers)
+        except Exception:
+            p = None
+
+        if p is None:
+            reasons.append("persister_score not numeric")
+            score = 0.0
+        elif p >= 0.5:
+            score = 2.0; reasons.append(f"high persister_score={p:.3f}")
+        elif p >= 0.0:
+            score = 1.0; reasons.append(f"mid persister_score={p:.3f}")
+        else:
+            score = 0.0; reasons.append(f"low persister_score={p:.3f}")
+
+    return {
+        "bucket": "persistence",
+        "score": float(score),
+        "reasons": reasons,
+    }
+
 
 def score_mechanisms_and_route(cs: CaseSnapshot) -> CaseSnapshot:
     """Score mechanisms (rule-based) and compute strategy routing.
@@ -145,7 +240,6 @@ def _route(cs: CaseSnapshot) -> StrategyRouting:
         what_to_avoid=what_to_avoid,
     )
 
-
 def _rationale_on_target(cs: CaseSnapshot) -> str:
     f = cs.genomic.flags or {}
     if not f.get("has_any_alk_mutation"):
@@ -205,3 +299,25 @@ def _supporting_evidence_ids(cs: CaseSnapshot, mechanism: str) -> list[str]:
         if any(t.upper() in text for t in terms):
             out.append(ev.id)
     return out
+
+# --- Backwards-compatible wrappers for older tests / docs ---
+
+# --- Backwards-compatible wrappers for older tests / docs ---
+
+def compute_mechanism_calls(cs: CaseSnapshot):
+    """
+    Compatibility wrapper for older tests.
+    Ensures cs.mechanism_calls is populated and returns it.
+    """
+    score_mechanisms_and_route(cs)
+    return cs.mechanism_calls or []
+
+
+def route_strategy(cs: CaseSnapshot):
+    """
+    Compatibility wrapper for older tests.
+    Ensures cs.mechanism_calls and cs.routing are populated and returns routing.
+    """
+    score_mechanisms_and_route(cs)
+    return cs.routing
+

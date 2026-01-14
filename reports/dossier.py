@@ -176,3 +176,21 @@ def write_dossier_bundle(cs: CaseSnapshot, out_root: Path) -> dict:
         "dossier_md": str(md_path),
         "top_mechanism": (max(cs.mechanism_calls, key=lambda x: x.score).mechanism.value if cs.mechanism_calls else None),
     }
+
+# --- Backwards-compatible names expected by tests ---
+
+# --- Backwards-compatible names expected by tests ---
+
+def build_json_dossier(cs: CaseSnapshot) -> dict:
+    """
+    Compatibility wrapper for older tests.
+    """
+    return cs.to_dict()
+
+
+def build_markdown_dossier(cs: CaseSnapshot) -> str:
+    """
+    Compatibility wrapper for older tests.
+    """
+    return render_markdown_dossier(cs)
+
