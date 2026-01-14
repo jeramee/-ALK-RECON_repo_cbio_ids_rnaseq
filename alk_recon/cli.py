@@ -94,6 +94,41 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional: path to a newline-delimited gene list used to compute a simple 'persister_score'.",
     )
+
+    # Optional: Copy-number matrices (cBioPortal bundles)
+    p.add_argument(
+        "--cna-thresholded",
+        default=None,
+        help="Optional: thresholded CNA matrix (e.g., cBioPortal data_cna.txt).",
+    )
+    p.add_argument(
+        "--cna-linear",
+        default=None,
+        help="Optional: linear CNA matrix (e.g., cBioPortal data_linear_cna.txt).",
+    )
+    p.add_argument(
+        "--cna-meta",
+        default=None,
+        help=(
+            "Optional: CNA sample metadata mapping (sample_id, optional case_id/study_id/timepoint_id). "
+            "If omitted, --rnaseq-meta will be reused."
+        ),
+    )
+    p.add_argument(
+        "--cna-study-id-col",
+        default=None,
+        help="Optional: study_id column in CNA metadata (default: auto-detect).",
+    )
+    p.add_argument(
+        "--cna-timepoint-id-col",
+        default=None,
+        help="Optional: timepoint_id column in CNA metadata (default: auto-detect).",
+    )
+    p.add_argument(
+        "--cna-genes",
+        default=None,
+        help="Optional: comma-separated genes to extract from CNA matrices (default: ALK,MET,EGFR,ERBB2,KRAS,BRAF,RET,ROS1).",
+    )
     return p
 
 
@@ -120,6 +155,12 @@ def main() -> None:
         rnaseq_study_id_col=args.rnaseq_study_id_col,
         rnaseq_timepoint_id_col=args.rnaseq_timepoint_id_col,
         rnaseq_signature_path=args.rnaseq_signature,
+        cna_thresholded_path=args.cna_thresholded,
+        cna_linear_path=args.cna_linear,
+        cna_metadata_path=args.cna_meta,
+        cna_study_id_col=args.cna_study_id_col,
+        cna_timepoint_id_col=args.cna_timepoint_id_col,
+        cna_genes=args.cna_genes,
         write_json_schema=args.write_json_schema,
     )
 

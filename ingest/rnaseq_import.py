@@ -100,55 +100,60 @@ def compute_signature_scores(
       2) log2(CPM+1)
       3) z-score each gene across samples
       4) per sample, score = mean(z) across signature genes present
+
+    Returns:
+      scores: pd.Series indexed by sample_id
+      marker_z: pd.DataFrame with z-scores for signature genes (rows=gene, cols=sample)
+      coverage: fraction of signature genes present in matrix
     """
-    # Coerce numeric, replace junk with 0, and disallow negatives (prevents log2 warnings)
+    # Coerce numeric, drop junk, disallow negatives
     c = counts_gene_by_sample.apply(pd.to_numeric, errors="coerce").fillna(0.0)
     c = c.clip(lower=0.0)
 
-    # Library sizes (per sample). If a sample has all zeros, it becomes NaN and yields NaN CPM.
-    lib = c.sum(axis=0)
-    lib = lib.where(lib > 0, np.nan)
-
+    # CPM normalize
+    lib = c.sum(axis=0).replace(0, np.nan)
     cpm = c.div(lib, axis=1) * 1e6
 
-    # After div-by-NaN, you'll get NaNs for empty samples; keep them as NaN (OK), but log2 must never see negatives.
-    # (cpm should be non-negative now.)
-    log2cpm = np.log2(cpm + 1.0)
+    # log2(CPM+1) — force a DataFrame for both runtime + Pylance typing
+    log2cpm = pd.DataFrame(
+        np.log2(cpm.to_numpy(dtype=float) + 1.0),
+        index=cpm.index,
+        columns=cpm.columns,
+    )
 
-    # Standardize per gene across samples (pandas skips NaN by default)
+
+    # Standardize per gene across samples (pandas skips NaNs by default)
     mu = log2cpm.mean(axis=1)
     sd = log2cpm.std(axis=1)
 
-    # Avoid divide-by-zero / NaN std
+    # Avoid divide-by-zero and all-NaN genes
     sd = sd.replace(0, 1e-6).fillna(1.0)
 
-    # Broadcast using .T pattern (robust + readable)
-    z = (log2cpm.T - mu).T
-    z = (z.T / sd).T
+    z = log2cpm.sub(mu, axis=0).div(sd, axis=0)
 
     genes_present = [g for g in signature_genes if g in z.index]
     coverage = (len(genes_present) / max(1, len(signature_genes)))
-
     if not genes_present:
         scores = pd.Series({sid: float("nan") for sid in z.columns})
         marker_z = pd.DataFrame(index=[], columns=z.columns)
         return scores, marker_z, coverage
 
     marker_z = z.loc[genes_present]
-    scores = marker_z.mean(axis=0, skipna=True)
-
+    scores = marker_z.mean(axis=0)
     return scores, marker_z, coverage
 
+
 def build_expression_index(
-    counts_path: str | Path,
-    metadata_path: str | Path,
-    gene_col: str | None = None,
-    sample_id_col: str | None = None,
-    case_id_col: str | None = None,
-    study_id_col: str | None = None,
-    timepoint_id_col: str | None = None,
-    signature_path: str | Path | None = None,
-) -> Dict[Tuple[Optional[str], Optional[str], str, Optional[str]], ExpressionSummary]:
+        counts_path: str | Path,
+        metadata_path: str | Path,
+        gene_col: str | None = None,
+        sample_id_col: str | None = None,
+        case_id_col: str | None = None,
+        study_id_col: str | None = None,
+        timepoint_id_col: str | None = None,
+        signature_path: str | Path | None = None,
+        top_k_markers: int = 10,   # <--- ADD THIS
+    ) -> Dict[Tuple[Optional[str], Optional[str], str, Optional[str]], ExpressionSummary]:
     """Load RNA-seq counts + metadata and return an index to attach to CaseSnapshots.
 
     Key:
@@ -211,16 +216,8 @@ def build_expression_index(
         # Top markers: signature genes with highest z in this sample
         top: list[dict] = []
         if sid in marker_z.columns and len(marker_z.index) > 0:
-            vec = (
-                marker_z[sid]
-                .replace([np.inf, -np.inf], np.nan)
-                .dropna()
-                .sort_values(ascending=False)
-                .head(10)
-            )
+            vec = marker_z[sid].sort_values(ascending=False).head(10)
             top = [{"gene": g, "z": float(v)} for g, v in vec.items()]
-
-
 
         expr = ExpressionSummary(
             platform="rnaseq_counts",
