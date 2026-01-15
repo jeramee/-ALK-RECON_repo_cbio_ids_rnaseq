@@ -1,7 +1,8 @@
+# ingest/variant_table_import.py
+
 from __future__ import annotations
 
 import re
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -20,7 +21,6 @@ from schema.case_snapshot import (
     SampleLevel,
     VariantEffect,
 )
-
 
 # --- Column aliases (many NGS exports use different headers)
 DEFAULT_COLUMN_ALIASES: dict[str, List[str]] = {
@@ -49,7 +49,14 @@ DEFAULT_COLUMN_ALIASES: dict[str, List[str]] = {
     ],
     "timepoint_id": ["timepoint", "timepoint_id", "visit", "collection", "draw"],
     "gene": ["gene", "hugo_symbol", "symbol"],
-    "protein_change": ["protein_change", "hgvsp", "protein", "aa_change", "amino_acid_change", "hgvs_p"],
+    "protein_change": [
+        "protein_change",
+        "hgvsp",
+        "protein",
+        "aa_change",
+        "amino_acid_change",
+        "hgvs_p",
+    ],
     "cDNA_change": ["cdna_change", "hgvsc", "cdna", "hgvs_c"],
     "variant_class": ["variant_class", "variant_type", "type", "classification"],
     "effect": ["effect", "consequence"],
@@ -65,7 +72,6 @@ DEFAULT_COLUMN_ALIASES: dict[str, List[str]] = {
         "dtp_score",
     ],
 }
-
 
 AA_SUB_RE = re.compile(r"(?i)^p?\.?(?P<ref>[A-Z])(?P<pos>\d+)(?P<alt>[A-Z])$")
 
@@ -85,8 +91,27 @@ def _find_column(df: pd.DataFrame, canonical: str, explicit: Optional[str]) -> O
     return None
 
 
+def _coerce_vaf(x: Any) -> str:
+    """Normalize VAF field.
+    Keeps dtype=str, but ensures percent-like inputs become fractions.
+    Example: "22" -> "0.22"
+    """
+    if x is None:
+        return ""
+    s = str(x).strip()
+    if s == "":
+        return ""
+    try:
+        v = float(s)
+    except Exception:
+        return s
+    if v > 1.0:
+        v = v / 100.0
+    return str(v)
+
+
 def load_variant_table(
-    path: Path,
+    path: str | Path,
     delimiter: str | None = None,
     case_col: str | None = None,
     sample_col: str | None = None,
@@ -95,8 +120,10 @@ def load_variant_table(
 ) -> pd.DataFrame:
     """Load a CSV/TSV ctDNA/NGS variant table.
 
-    The loader is permissive: you can give it typical NGS exports.
-    It will attempt to locate the key columns via aliases.
+    Permissive loader: attempts to locate key columns via aliases and
+    normalizes them to canonical names.
+
+    Returns a DataFrame with canonical columns present when possible.
     """
     path = Path(path)
     if delimiter is None:
@@ -125,12 +152,11 @@ def load_variant_table(
     if c_time is None:
         df["timepoint_id"] = "unspecified"
         c_time = "timepoint_id"
-
     if c_study is None:
         df["study_id"] = "unspecified"
         c_study = "study_id"
 
-    rename_map = {
+    rename_map: Dict[str, str] = {
         c_study: "study_id",
         c_case: "case_id",
         c_sample: "sample_id",
@@ -139,17 +165,25 @@ def load_variant_table(
     }
     if c_persist is not None:
         rename_map[c_persist] = "persister_score"
+
     df = df.rename(columns=rename_map)
 
+    # --- VAF normalization (22 -> 0.22) ---
+    c_vaf_pre = _find_column(df, "vaf", None)
+    if c_vaf_pre and c_vaf_pre != "vaf":
+        df = df.rename(columns={c_vaf_pre: "vaf"})
+    if "vaf" in df.columns:
+        df["vaf"] = df["vaf"].map(_coerce_vaf)
+
     # vaf filter (optional)
-    c_vaf = _find_column(df, "vaf", None)
-    if min_vaf is not None and c_vaf is not None:
+    if min_vaf is not None and "vaf" in df.columns:
         def _to_float(x: str) -> float:
             try:
                 return float(x)
             except Exception:
                 return float("nan")
-        v = df[c_vaf].map(_to_float)
+
+        v = df["vaf"].map(_to_float)
         df = df.loc[(v.isna()) | (v >= float(min_vaf))].copy()
 
     return df
@@ -161,7 +195,7 @@ def _parse_protein_change(raw: str) -> Tuple[Optional[str], Optional[int], Optio
     raw = raw.strip()
     m = AA_SUB_RE.match(raw)
     if not m:
-        # allow strings like "p.G1202R" or "Gly1202Arg" (we won't parse the latter)
+        # allow strings like "p.G1202R" or unknown formats; keep as-is
         return (f"p.{raw}" if not raw.lower().startswith("p.") else raw), None, None, None
     ref = m.group("ref").upper()
     pos = int(m.group("pos"))
@@ -193,7 +227,7 @@ def _effect_from_row(row: pd.Series) -> VariantEffect:
 
 def dataframe_to_case_snapshots(
     df: pd.DataFrame,
-    source_id: str = "variants_tsv",
+    source_id: str = "variant_table",
 ) -> list[CaseSnapshot]:
     """Group rows into CaseSnapshot objects.
 
@@ -208,9 +242,12 @@ def dataframe_to_case_snapshots(
     c_persist = _find_column(df, "persister_score", None)
 
     snaps: List[CaseSnapshot] = []
-    # If your input originates from cBioPortal, including study_id makes your
-    # snapshots traceable back to the exact cohort and sample.
-    group_cols = ["study_id", "case_id", "sample_id", "timepoint_id"] if "study_id" in df.columns else ["case_id", "sample_id", "timepoint_id"]
+
+    group_cols = (
+        ["study_id", "case_id", "sample_id", "timepoint_id"]
+        if "study_id" in df.columns
+        else ["case_id", "sample_id", "timepoint_id"]
+    )
 
     for keys, sub in df.groupby(group_cols, dropna=False):
         if len(group_cols) == 4:
@@ -218,11 +255,12 @@ def dataframe_to_case_snapshots(
         else:
             study_id = None
             case_id, sample_id, timepoint_id = keys
+
         genomic = GenomicAlterations()
         evidence: List[EvidenceItem] = []
 
         # Collect alterations
-        for i, row in sub.reset_index(drop=True).iterrows():
+        for _, row in sub.reset_index(drop=True).iterrows():
             gene = str(row.get("gene", "")).strip()
             if not gene:
                 continue
@@ -234,9 +272,8 @@ def dataframe_to_case_snapshots(
             eff = _effect_from_row(row)
 
             eid = f"E{len(evidence) + 1}"
-            ev_val: Dict[str, Any] = {
-                "gene": gene,
-            }
+            ev_val: Dict[str, Any] = {"gene": gene}
+
             if raw_prot:
                 norm, pos, ref, alt = _parse_protein_change(raw_prot)
                 ev_val.update({"protein_change": raw_prot, "normalized": norm})
@@ -273,18 +310,23 @@ def dataframe_to_case_snapshots(
                     )
                     genomic.alk_variants.append(pv)
             else:
-                # crude CNA detection for bypass genes if copy_number present
                 if raw_cn:
                     genomic.copy_number_events.append({"gene": gene, "copy_number": raw_cn})
-                # non-ALK variants can be bypass events; keep them for later feature rules
                 if raw_prot or raw_fusion or raw_cn:
-                    genomic.bypass_events.append({"gene": gene, "protein_change": raw_prot, "fusion": raw_fusion, "copy_number": raw_cn, "effect": eff.value})
+                    genomic.bypass_events.append(
+                        {
+                            "gene": gene,
+                            "protein_change": raw_prot,
+                            "fusion": raw_fusion,
+                            "copy_number": raw_cn,
+                            "effect": eff.value,
+                        }
+                    )
 
         # Optional persistence score at this snapshot level
         expr = None
         if c_persist:
-            vals = sub[c_persist].dropna().astype(str).tolist()
-            # take first parseable numeric value
+            vals = sub[c_persist].astype(str).tolist()
             pval = None
             for v in vals:
                 v = v.strip()
@@ -293,13 +335,19 @@ def dataframe_to_case_snapshots(
                 try:
                     pval = float(v)
                     break
-                except ValueError:
+                except Exception:
                     continue
+
             if pval is not None:
-                expr = ExpressionSummary(platform="unknown", contrast=None, signature_scores={"persister_score": pval}, top_markers=[])
+                expr = ExpressionSummary(
+                    platform="unknown",
+                    contrast=None,
+                    signature_scores={"persister_score": pval},
+                    top_markers=[],
+                )
                 evidence.append(
                     EvidenceItem(
-                        id=f"E{len(evidence)+1}",
+                        id=f"E{len(evidence) + 1}",
                         level=EvidenceLevel.KNOWN,
                         kind="expression_signature",
                         label="Persister/tolerance signature score provided",

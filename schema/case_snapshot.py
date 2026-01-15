@@ -116,6 +116,10 @@ class ProteinVariant:
     aa_pos: Optional[int] = None
     ref_aa: Optional[str] = None
     alt_aa: Optional[str] = None
+    @property
+    def protein_change(self) -> Optional[str]:
+        return self.normalized or self.raw
+
 
 
 @dataclass

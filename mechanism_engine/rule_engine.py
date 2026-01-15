@@ -313,11 +313,12 @@ def compute_mechanism_calls(cs: CaseSnapshot):
     return cs.mechanism_calls or []
 
 
-def route_strategy(cs: CaseSnapshot):
-    """
-    Compatibility wrapper for older tests.
-    Ensures cs.mechanism_calls and cs.routing are populated and returns routing.
-    """
+def route_strategy(cs: CaseSnapshot, calls=None):
+    if calls is not None:
+        cs.mechanism_calls = calls
+        cs.routing = _route(cs, sorted(calls, key=lambda c: c.score, reverse=True))
+        return cs.routing
     score_mechanisms_and_route(cs)
     return cs.routing
+
 

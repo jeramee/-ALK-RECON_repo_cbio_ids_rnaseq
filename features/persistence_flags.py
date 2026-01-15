@@ -16,9 +16,15 @@ def apply_persistence_flags(
 
     If no expression summary exists, this does nothing.
     """
+    
     flags = cs.genomic.flags
     flags.setdefault("has_persistence_evidence", False)
     flags.setdefault("persister_signature_score_high", False)
+    flags["has_persister_score"] = bool(
+    cs.expression and cs.expression.signature_scores and
+    ("persister_score" in cs.expression.signature_scores or "PERSISTER_SCORE" in cs.expression.signature_scores)
+)
+
 
     if cs.expression is None:
         return

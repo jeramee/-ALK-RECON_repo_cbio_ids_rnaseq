@@ -33,6 +33,16 @@ def apply_bypass_flags(cs: CaseSnapshot) -> CaseSnapshot:
         if gene:
             genes_present.add(gene)
 
+    flags["has_MET_amp"] = False
+    if cs.genomic and cs.genomic.bypass_events:
+        for ev in cs.genomic.bypass_events:
+            gene = (ev.get("gene") or "").upper()
+            et = (ev.get("event_type") or ev.get("type") or "").upper()
+            if gene == "MET" and ("AMP" in et or "AMPL" in et):
+                flags["has_MET_amp"] = True
+                break
+
+
     # Simple starter heuristics
     flags["has_bypass_gene_event"] = any(g in BYPASS_GENES for g in genes_present)
     flags["has_MET_event"] = "MET" in genes_present
@@ -49,3 +59,4 @@ def apply_bypass_flags(cs: CaseSnapshot) -> CaseSnapshot:
     ))
 
     return cs
+
